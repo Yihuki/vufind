@@ -212,6 +212,7 @@ class PrimoBackendFactory extends AbstractBackendFactory
         $connector = new $this->restConnectorClass(
             $this->primoConfig->General->jwt_url ?? '',
             $this->primoConfig->General->search_url,
+            $this->primoConfig->General->facets_url ?? '',
             $instCode,
             function (string $url) use ($timeout) {
                 return $this->createHttpClient(

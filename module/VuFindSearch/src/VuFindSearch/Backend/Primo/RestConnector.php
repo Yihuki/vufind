@@ -84,6 +84,13 @@ class RestConnector implements ConnectorInterface, \Psr\Log\LoggerAwareInterface
     protected $searchUrl;
 
     /**
+     * Primo REST API facets URL
+     *
+     * @var string
+     */
+    protected $facetsUrl;
+
+    /**
      * Institution code
      *
      * @var string
@@ -96,6 +103,13 @@ class RestConnector implements ConnectorInterface, \Psr\Log\LoggerAwareInterface
      * @var SessionContainer
      */
     protected $session;
+
+    /**
+     * Cookies from search response
+     *
+     * @var array
+     */
+    protected $cookies = [];
 
     /**
      * Response for an empty search
@@ -141,6 +155,7 @@ class RestConnector implements ConnectorInterface, \Psr\Log\LoggerAwareInterface
      *
      * @param string           $jwtUrl        Primo JWT API URL
      * @param string           $searchUrl     Primo REST API search URL
+     * @param string           $facetsUrl     Primo REST API facets URL
      * @param string           $instCode      Institution code (used as view ID, i.e. the
      * vid parameter unless specified in the URL)
      * @param callable         $clientFactory HTTP client factory
@@ -149,12 +164,14 @@ class RestConnector implements ConnectorInterface, \Psr\Log\LoggerAwareInterface
     public function __construct(
         string $jwtUrl,
         string $searchUrl,
+        string $facetsUrl,
         string $instCode,
         callable $clientFactory,
         SessionContainer $session
     ) {
         $this->jwtUrl = $jwtUrl;
         $this->searchUrl = $searchUrl;
+        $this->facetsUrl = $facetsUrl;
         $this->inst = $instCode;
 
         $this->clientFactory = $clientFactory;
@@ -319,6 +336,8 @@ class RestConnector implements ConnectorInterface, \Psr\Log\LoggerAwareInterface
 
         if ($primoQuery) {
             $qs['q'] = implode(';', $primoQuery);
+            // Store the query for use in facets request
+            $args['query'] = $qs['q'];
         }
 
         // QUERYSTRING: query (filter list)
@@ -436,6 +455,104 @@ class RestConnector implements ConnectorInterface, \Psr\Log\LoggerAwareInterface
                 $this->logError("Request $url failed with error code " . $result->getStatusCode() . ": $resultBody");
                 throw new \Exception($resultBody);
             }
+            
+            // Store cookies from the response for use in facets requests
+            $headers = $result->getHeaders();
+            if ($headers->has('Set-Cookie')) {
+                $cookieHeader = $headers->get('Set-Cookie');
+                if ($cookieHeader instanceof \Laminas\Http\Header\SetCookie) {
+                    $this->cookies = [$cookieHeader->toString()];
+                } else {
+                    // Handle multiple Set-Cookie headers
+                    $this->cookies = [];
+                    foreach ($cookieHeader as $cookie) {
+                        $this->cookies[] = $cookie->toString();
+                    }
+                }
+            }
+            
+            if ($cacheKey) {
+                $this->putCachedData($cacheKey, $resultBody);
+            }
+        }
+        return $resultBody;
+    }
+
+    /**
+     * Small wrapper for sendRequest, process to simplify error handling for facets.
+     *
+     * @param string $qs Query string
+     *
+     * @return string Result body
+     * @throws \Exception
+     */
+    protected function callFacets(string $qs): string
+    {
+        if (empty($this->facetsUrl)) {
+            // If facets URL is not configured, fall back to the regular call method
+            return $this->call($qs);
+        }
+
+        $url = $this->getUrl($this->facetsUrl);
+        $url .= (str_contains($url, '?') ? '&' : '?') . $qs;
+        $this->debug("GET facets: $url");
+        $client = ($this->clientFactory)($url);
+        $client->setMethod('GET');
+        
+        // Check cache:
+        $resultBody = null;
+        $cacheKey = null;
+        if ($this->cache) {
+            $cacheKey = $this->getCacheKey($client);
+            $resultBody = $this->getCachedData($cacheKey);
+        }
+        
+        if (null === $resultBody) {
+            $headers = [];
+            
+            // Add JWT token if available
+            if ($jwt = $this->getJWT()) {
+                $headers['Authorization'] = "Bearer $jwt";
+            }
+            
+            // Add cookies from search response if available
+            if (!empty($this->cookies)) {
+                // Extract cookie values from Set-Cookie headers
+                $cookieValues = [];
+                foreach ($this->cookies as $cookie) {
+                    // Remove "Set-Cookie: " prefix if present
+                    $cookie = preg_replace('/^Set-Cookie:\s*/i', '', $cookie);
+                    // Extract just the cookie name=value part (before any ;)
+                    if (preg_match('/^([^=;]+=[^=;]*)/', $cookie, $matches)) {
+                        $cookieValues[] = $matches[1];
+                    }
+                }
+                if (!empty($cookieValues)) {
+                    $headers['Cookie'] = implode('; ', $cookieValues);
+                }
+            }
+            
+            // Set headers if any
+            if (!empty($headers)) {
+                $client->setHeaders($headers);
+            }
+            
+            // Send request:
+            $result = $client->send();
+            
+            // If JWT fails, reset JWT and try again
+            if ($jwt && $result->getStatusCode() === 403) {
+                $jwt = $this->getJWT(true);
+                $headers['Authorization'] = "Bearer $jwt";
+                $client->setHeaders($headers);
+                $result = $client->send();
+            }
+            
+            $resultBody = $result->getBody();
+            if (!$result->isSuccess()) {
+                $this->logError("Facets request $url failed with error code " . $result->getStatusCode() . ": $resultBody");
+                throw new \Exception($resultBody);
+            }
             if ($cacheKey) {
                 $this->putCachedData($cacheKey, $resultBody);
             }
@@ -519,7 +636,7 @@ class RestConnector implements ConnectorInterface, \Psr\Log\LoggerAwareInterface
             $openurl = $pnx->links->openurl[0] ?? '';
             $item['url'] = $openurl && !str_starts_with($openurl, '$')
                 ? $openurl
-                : ($pnx->GetIt2->link ?? '');
+                : ($pnx->links->linktohtml[0] ?? '');
 
             $processCitations = function (array $data): array {
                 return array_map(
@@ -585,8 +702,31 @@ class RestConnector implements ConnectorInterface, \Psr\Log\LoggerAwareInterface
             }
         }
 
-        // Process received facets
-        foreach ($response->facets as $facet) {
+        // Process received facets from search response
+        $searchFacets = $response->facets ?? [];
+        
+        // If facets URL is configured, get facets from there
+        if (!empty($this->facetsUrl)) {
+            try {
+                // Build query string for facets request using the same parameters as the search
+                $facetsQs = $this->buildFacetsQueryString($params);
+                $facetsData = $this->callFacets($facetsQs);
+                $facetsResponse = json_decode($facetsData);
+                
+                if ($facetsResponse && isset($facetsResponse->facets) && !empty($facetsResponse->facets)) {
+                    $searchFacets = $facetsResponse->facets;
+                } else {
+                    // If facets are empty, use the search response facets
+                    $this->logError("Facets response is empty, using search response facets");
+                }
+            } catch (\Exception $e) {
+                // If facets request fails, log the error and fall back to search response facets
+                $this->logError("Failed to get facets from facets URL: " . $e->getMessage());
+            }
+        }
+        
+        // Process facets
+        foreach ($searchFacets as $facet) {
             // Handle facet values as strings to ensure that numeric values stay
             // intact (no array_combine etc.):
             foreach ($facet->values as $value) {
@@ -756,5 +896,65 @@ class RestConnector implements ConnectorInterface, \Psr\Log\LoggerAwareInterface
     protected function getFirstSubfield(string $field): string
     {
         return false !== ($p = strpos($field, '$$')) ? substr($field, 0, $p) : $field;
+    }
+
+    /**
+     * Build query string for facets request
+     *
+     * @param array $params Request parameters
+     *
+     * @return string Query string
+     */
+    protected function buildFacetsQueryString(array $params): string
+    {
+        $qs = [];
+        
+        // Add query terms if available
+        if (!empty($params['query'])) {
+            $qs['q'] = $params['query'];
+        }
+        
+        // Add filters if available
+        if (!empty($params['filterList'])) {
+            $multiFacets = [];
+            $qInclude = [];
+            $qExclude = [];
+            foreach ($params['filterList'] as $current) {
+                $facet = $current['field'];
+                $facetOp = $current['facetOp'];
+                $values = $current['values'];
+
+                foreach ($values as $value) {
+                    if ('OR' === $facetOp) {
+                        $multiFacets[] = "facet_$facet,include,$value";
+                    } elseif ('NOT' === $facetOp) {
+                        $qExclude[] = "facet_$facet,exact,$value";
+                    } else {
+                        $qInclude[] = "facet_$facet,exact,$value";
+                    }
+                }
+            }
+            if ($multiFacets) {
+                $qs['multiFacets'] = implode('|,|', $multiFacets);
+            }
+            if ($qInclude) {
+                $qs['qInclude'] = implode('|,|', $qInclude);
+            }
+            if ($qExclude) {
+                $qs['qExclude'] =  implode('|,|', $qExclude);
+            }
+        }
+        
+        // Add pcAvailability if available
+        if (null !== ($pc = $params['pcAvailability'] ?? null)) {
+            $qs['pcAvailability'] = $pc ? 'true' : 'false';
+        }
+        
+        // Add cdiFulltext if available
+        if (null !== ($ft = $params['cdiFulltext'] ?? null)) {
+            $qs['searchInFulltextUserSelection'] = $ft ? 'true' : 'false';
+        }
+        
+        return http_build_query($qs);
     }
 }
