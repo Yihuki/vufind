@@ -59,6 +59,7 @@ class PluginManager extends \VuFind\ServiceManager\AbstractPluginManager
         'mixedlist' => \VuFind\Search\MixedList\Results::class,
         'pazpar2' => \VuFind\Search\Pazpar2\Results::class,
         'primo' => \VuFind\Search\Primo\Results::class,
+        'primo2' => \VuFind\Search\Primo2\Results::class,
         'proquestfsg' => \VuFind\Search\ProQuestFSG\Results::class,
         'search2' => \VuFind\Search\Search2\Results::class,
         'search2collection' => \VuFind\Search\Search2Collection\Results::class,
@@ -96,6 +97,7 @@ class PluginManager extends \VuFind\ServiceManager\AbstractPluginManager
         \VuFind\Search\MixedList\Results::class => ResultsFactory::class,
         \VuFind\Search\Pazpar2\Results::class => ResultsFactory::class,
         \VuFind\Search\Primo\Results::class => ResultsFactory::class,
+        \VuFind\Search\Primo2\Results::class => ResultsFactory::class,
         \VuFind\Search\ProQuestFSG\Results::class => ResultsFactory::class,
         \VuFind\Search\Search2\Results::class =>
             \VuFind\Search\Search2\ResultsFactory::class,
