@@ -636,7 +636,7 @@ class RestConnector implements ConnectorInterface, \Psr\Log\LoggerAwareInterface
             $openurl = $pnx->links->openurl[0] ?? '';
             $item['url'] = $openurl && !str_starts_with($openurl, '$')
                 ? $openurl
-                : ($pnx->links->linktohtml[0] ?? '');
+                : ($this->getUrlSubfield($pnx->links->linktohtml[0]?? ' '));
 
             $processCitations = function (array $data): array {
                 return array_map(
@@ -898,6 +898,21 @@ class RestConnector implements ConnectorInterface, \Psr\Log\LoggerAwareInterface
         return false !== ($p = strpos($field, '$$')) ? substr($field, 0, $p) : $field;
     }
 
+    /**
+     * Get first subfield from a field that can contain subfields
+     *
+     * Example field: 'Mattila, Jaakko$$QMattila, Jaakko'
+     *
+     * @param string $field Field
+     *
+     * @return string
+     */
+    protected function getUrlSubfield(string $field): string
+    {
+        return false !== ($p = strtok($field, '$$')) && str_starts_with($p, 'U') 
+            ? substr($p, 1) 
+            : '';
+    }
     /**
      * Build query string for facets request
      *
