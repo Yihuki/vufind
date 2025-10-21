@@ -79,6 +79,7 @@ class BackendRegistry extends \VuFind\ServiceManager\AbstractPluginManager
         'SolrReserves' => Factory\SolrReservesBackendFactory::class,
         'SolrWeb' => Factory\SolrWebBackendFactory::class,
         'Summon' => Factory\SummonBackendFactory::class,
+        'PublicSummon' => Factory\PublicSummonBackendFactory::class,
         'WorldCat2' => Factory\WorldCat2BackendFactory::class,
     ];
 

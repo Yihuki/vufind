@@ -60,6 +60,7 @@ class PluginManager extends \VuFind\ServiceManager\AbstractPluginManager
         'pazpar2' => Pazpar2::class,
         'primo' => Primo::class,
         'proquestfsg' => ProQuestFSG::class,
+        'publicsummon' => PublicSummon::class,
         'search2default' => Search2Default::class,
         'solrarchivesspace' => SolrArchivesSpace::class,
         'solrauth' => SolrAuthMarc::class, // legacy name
@@ -100,6 +101,7 @@ class PluginManager extends \VuFind\ServiceManager\AbstractPluginManager
         Missing::class => AbstractBaseFactory::class,
         Pazpar2::class => NameBasedConfigFactory::class,
         Primo::class => NameBasedConfigFactory::class,
+        PublicSummon::class => PublicSummonFactory::class,
         Search2Default::class => Search2DefaultFactory::class,
         SolrArchivesSpace::class => SolrDefaultFactory::class,
         SolrAuthDefault::class => SolrDefaultWithoutSearchServiceFactory::class,

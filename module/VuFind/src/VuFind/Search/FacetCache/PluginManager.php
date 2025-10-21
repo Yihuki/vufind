@@ -49,6 +49,7 @@ class PluginManager extends \VuFind\ServiceManager\AbstractPluginManager
         'search2' => \VuFind\Search\Search2\FacetCache::class,
         'solr' => \VuFind\Search\Solr\FacetCache::class,
         'summon' => \VuFind\Search\Summon\FacetCache::class,
+        'publicsummon' => \VuFind\Search\PublicSummon\FacetCache::class,
     ];
 
     /**
@@ -62,6 +63,8 @@ class PluginManager extends \VuFind\ServiceManager\AbstractPluginManager
         \VuFind\Search\Solr\FacetCache::class =>
             \VuFind\Search\Solr\FacetCacheFactory::class,
         \VuFind\Search\Summon\FacetCache::class =>
+            \VuFind\Search\Base\FacetCacheFactory::class,
+        \VuFind\Search\PublicSummon\FacetCache::class =>
             \VuFind\Search\Base\FacetCacheFactory::class,
     ];
 

@@ -71,6 +71,7 @@ class PluginManager extends \VuFind\ServiceManager\AbstractPluginManager
         'solrreserves' => \VuFind\Search\SolrReserves\Results::class,
         'solrweb' => \VuFind\Search\SolrWeb\Results::class,
         'summon' => \VuFind\Search\Summon\Results::class,
+        'publicsummon' => \VuFind\Search\PublicSummon\Results::class,
         'tags' => \VuFind\Search\Tags\Results::class,
         'worldcat' => \VuFind\Search\WorldCat\Results::class,
         'worldcat2' => \VuFind\Search\WorldCat2\Results::class,
@@ -112,6 +113,7 @@ class PluginManager extends \VuFind\ServiceManager\AbstractPluginManager
         \VuFind\Search\SolrReserves\Results::class => ResultsFactory::class,
         \VuFind\Search\SolrWeb\Results::class => ResultsFactory::class,
         \VuFind\Search\Summon\Results::class => ResultsFactory::class,
+        \VuFind\Search\PublicSummon\Results::class => ResultsFactory::class,
         \VuFind\Search\Tags\Results::class =>
             \VuFind\Search\Tags\ResultsFactory::class,
         \VuFind\Search\WorldCat\Results::class => ResultsFactory::class,
